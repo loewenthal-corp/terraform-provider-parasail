@@ -25,6 +25,7 @@ tasks:
       - task: format
       - task: lint
       - task: examples:validate
+      - task: docs
       - task: test
       - task: security
       - task: build
@@ -57,6 +58,10 @@ tasks:
 
   lint:tflint:
     desc: "Run tflint across Terraform/OpenTofu examples"
+    # In recursive mode tflint resolves .tflint.hcl per directory; point every
+    # directory at the repo-root config so shared rule settings apply everywhere.
+    env:
+      TFLINT_CONFIG_FILE: "{{.ROOT_DIR}}/.tflint.hcl"
     cmds:
       - tflint --init
       - tflint --recursive
@@ -106,7 +111,7 @@ tasks:
     aliases: [b]
     cmds:
       - mkdir -p {{.DIST_DIR}}
-      - go build -ldflags '{{.LDFLAGS}}' -o {{.DIST_DIR}}/{{.BINARY_NAME}} ./cmd/{{.BINARY_NAME}}
+      - go build -ldflags '{{.LDFLAGS}}' -o {{.DIST_DIR}}/{{.BINARY_NAME}} .
 
   examples:fmt:
     desc: "Format Terraform/OpenTofu examples"
@@ -138,6 +143,22 @@ tasks:
             )
           fi
         done
+
+  docs:
+    desc: "Generate and validate Terraform Registry documentation"
+    cmds:
+      - task: docs:generate
+      - task: docs:validate
+
+  docs:generate:
+    desc: "Generate docs/ from the provider schema and examples (tfplugindocs)"
+    cmds:
+      - go tool tfplugindocs generate --provider-name parasail
+
+  docs:validate:
+    desc: "Validate docs/ structure and frontmatter against the provider schema"
+    cmds:
+      - go tool tfplugindocs validate --provider-name parasail
 
   vuln:
     desc: "Run Go reachable-vulnerability analysis"

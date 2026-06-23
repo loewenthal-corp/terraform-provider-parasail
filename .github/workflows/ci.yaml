@@ -27,6 +27,7 @@ jobs:
           - format
           - lint
           - examples:validate
+          - docs
           - test
           - security
           - build

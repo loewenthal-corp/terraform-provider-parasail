@@ -48,7 +48,7 @@ func (p *parasailProvider) Metadata(_ context.Context, _ provider.MetadataReques
 
 func (p *parasailProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Terraform provider for Parasail's public Control API.",
+		Description: "Unofficial Terraform provider for Parasail. It is a community project, not affiliated with or endorsed by Parasail, and is built entirely on top of Parasail's public Control API.",
 		Attributes: map[string]schema.Attribute{
 			"api_key": schema.StringAttribute{
 				Optional:    true,
