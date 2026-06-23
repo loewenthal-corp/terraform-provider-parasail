@@ -1,0 +1,172 @@
+---
+version: "3"
+
+output: group
+
+vars:
+  CPU_COUNT:
+    sh: nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo "4"
+  PARALLEL_COUNT:
+    sh: echo $(({{.CPU_COUNT}} * 2))
+  GIT_COMMIT:
+    sh: git rev-parse --short HEAD 2>/dev/null || echo "unknown"
+  BUILD_TIME:
+    sh: date -u +%Y-%m-%dT%H:%M:%SZ
+  BINARY_NAME: terraform-provider-parasail
+  DIST_DIR: dist
+  LDFLAGS: >-
+    -X github.com/loewenthal-corp/terraform-provider-parasail/internal/buildinfo.Commit={{.GIT_COMMIT}}
+    -X github.com/loewenthal-corp/terraform-provider-parasail/internal/buildinfo.BuildTime={{.BUILD_TIME}}
+
+tasks:
+  do:
+    desc: "Run all quality checks"
+    cmds:
+      - task: format
+      - task: lint
+      - task: examples:validate
+      - task: test
+      - task: security
+      - task: build
+
+  init:
+    desc: "Download dependencies and initialize local tool plugins"
+    cmds:
+      - go mod download
+      - tflint --init
+
+  format:
+    desc: "Format Go and Terraform/OpenTofu files"
+    aliases: [fmt, f]
+    cmds:
+      - gofmt -w $(find . -name '*.go' -not -path './.terraform/*')
+      - tofu fmt -recursive
+
+  lint:
+    desc: "Run Go, Terraform/OpenTofu, and typo linting"
+    aliases: [l]
+    cmds:
+      - task: lint:go
+      - task: lint:tflint
+      - task: lint:typos
+
+  lint:go:
+    desc: "Run golangci-lint"
+    cmds:
+      - golangci-lint run ./...
+
+  lint:tflint:
+    desc: "Run tflint across Terraform/OpenTofu examples"
+    cmds:
+      - tflint --init
+      - tflint --recursive
+
+  lint:typos:
+    desc: "Check spelling in docs, source, and config"
+    cmds:
+      - typos --format brief
+
+  test:
+    desc: "Run Go tests with race detection and coverage"
+    aliases: [t]
+    cmds:
+      - gotestsum --junitfile test-results.xml -- -race -cover -p {{.CPU_COUNT}} -parallel {{.PARALLEL_COUNT}} ./...
+
+  test:unit:
+    desc: "Run Go tests without race detection"
+    cmds:
+      - go test -p {{.CPU_COUNT}} -parallel {{.PARALLEL_COUNT}} ./...
+
+  test:acc:
+    desc: "Run live Terraform acceptance tests against Parasail"
+    cmds:
+      - |
+        set -eu
+        if [ -f .env ]; then
+          set -a
+          . ./.env
+          set +a
+        fi
+        TF_ACC=1 TF_ACC_TERRAFORM_PATH="{{.ROOT_DIR}}/bin/terraform" go test -v -run '^TestAcc' ./internal/provider -count=1
+
+  test:acc:readonly:
+    desc: "Run read-only live acceptance tests against Parasail"
+    cmds:
+      - |
+        set -eu
+        if [ -f .env ]; then
+          set -a
+          . ./.env
+          set +a
+        fi
+        PARASAIL_ACC_SKIP_MUTATING=1 TF_ACC=1 TF_ACC_TERRAFORM_PATH="{{.ROOT_DIR}}/bin/terraform" go test -v -run '^TestAccDedicatedDataSources' ./internal/provider -count=1
+
+  build:
+    desc: "Build the provider binary"
+    aliases: [b]
+    cmds:
+      - mkdir -p {{.DIST_DIR}}
+      - go build -ldflags '{{.LDFLAGS}}' -o {{.DIST_DIR}}/{{.BINARY_NAME}} ./cmd/{{.BINARY_NAME}}
+
+  examples:fmt:
+    desc: "Format Terraform/OpenTofu examples"
+    cmds:
+      - tofu fmt -recursive examples
+
+  examples:validate:
+    desc: "Validate examples against the locally built provider"
+    deps:
+      - build
+    cmds:
+      - mkdir -p .task/opentofu
+      - |
+        cat > .task/opentofu/provider-dev.tfrc <<EOF
+        provider_installation {
+          dev_overrides {
+            "registry.terraform.io/loewenthal-corp/parasail" = "{{.ROOT_DIR}}/{{.DIST_DIR}}"
+          }
+          direct {}
+        }
+        EOF
+      - |
+        for dir in examples/*; do
+          if [ -d "$dir" ] && ls "$dir"/*.tf >/dev/null 2>&1; then
+            echo "Validating $dir"
+            (
+              cd "$dir"
+              TF_CLI_CONFIG_FILE="{{.ROOT_DIR}}/.task/opentofu/provider-dev.tfrc" tofu validate
+            )
+          fi
+        done
+
+  vuln:
+    desc: "Run Go reachable-vulnerability analysis"
+    cmds:
+      - go tool govulncheck ./...
+
+  security:
+    desc: "Run vulnerability, secret, and IaC security scans"
+    cmds:
+      - task: vuln
+      - task: security:gitleaks
+      - task: security:trivy
+
+  security:gitleaks:
+    desc: "Scan Git history and the current worktree for secrets"
+    cmds:
+      - |
+        if git rev-parse --verify HEAD >/dev/null 2>&1; then
+          gitleaks git . --redact --no-banner
+        fi
+      - gitleaks dir . --redact --no-banner
+
+  security:trivy:
+    desc: "Scan dependencies and Terraform/OpenTofu config with Trivy"
+    cmds:
+      - trivy fs --scanners vuln,secret --ignore-unfixed --severity HIGH,CRITICAL --exit-code 1 .
+      - trivy config --severity HIGH,CRITICAL --exit-code 1 .
+
+  clean:
+    desc: "Remove local build and report artifacts"
+    cmds:
+      - rm -rf {{.DIST_DIR}} coverage.out test-results.xml .task

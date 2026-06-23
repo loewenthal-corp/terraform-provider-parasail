@@ -5,9 +5,12 @@
 crash.log
 crash.*.log
 
-bin/
+.env
+
 dist/
 coverage.out
+test-results.xml
+
+.task/
 
 .DS_Store
-

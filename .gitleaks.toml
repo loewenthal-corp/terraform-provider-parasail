@@ -1,0 +1,11 @@
+title = "terraform-provider-parasail gitleaks config"
+
+[allowlist]
+description = "Local-only ignored files and generated task/build artifacts."
+paths = [
+  '''(^|/)\.env$''',
+  '''(^|/)\.task/''',
+  '''(^|/)dist/''',
+  '''(^|/)coverage\.out$''',
+  '''(^|/)test-results\.xml$''',
+]

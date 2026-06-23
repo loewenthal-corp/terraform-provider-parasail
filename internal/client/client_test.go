@@ -99,6 +99,43 @@ func TestCreateDeploymentRequest(t *testing.T) {
 	}
 }
 
+func TestListDeploymentsRequest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("method = %s, want GET", r.Method)
+		}
+		if r.URL.Path != "/api/v1/dedicated/deployments" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+
+		_ = json.NewEncoder(w).Encode([]DedicatedDeployment{
+			{
+				ID:             123,
+				DeploymentName: "existing",
+				ModelName:      "org/model",
+				Status:         &DeploymentStatus{Status: "ONLINE"},
+			},
+		})
+	}))
+	defer server.Close()
+
+	client, err := New(server.URL+"/api/v1", "test-key", 5*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	deployments, err := client.ListDeployments(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deployments) != 1 {
+		t.Fatalf("len(deployments) = %d, want 1", len(deployments))
+	}
+	if deployments[0].DeploymentName != "existing" {
+		t.Fatalf("deploymentName = %q", deployments[0].DeploymentName)
+	}
+}
+
 func TestIsNotFound(t *testing.T) {
 	if !IsNotFound(&APIError{StatusCode: http.StatusNotFound}) {
 		t.Fatal("expected IsNotFound to detect 404")

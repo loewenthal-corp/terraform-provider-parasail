@@ -1,7 +1,10 @@
 terraform {
+  required_version = ">= 1.6.0"
+
   required_providers {
     parasail = {
-      source = "loewenthal-corp/parasail"
+      source  = "registry.terraform.io/loewenthal-corp/parasail"
+      version = ">= 0.1.0"
     }
   }
 }

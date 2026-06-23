@@ -3,22 +3,27 @@ package provider
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	rschema "github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	parasail "github.com/loewenthal-corp/terraform-provider-parasail/internal/client"
 )
 
 const defaultScaleDownAfter = "8h"
+
+var dedicatedDeploymentNameRegexp = regexp.MustCompile(`^[a-z0-9-]+$`)
 
 type dedicatedDeploymentResource struct {
 	api *apiConfig
@@ -65,6 +70,7 @@ type autoscalingModel struct {
 
 var _ resource.Resource = &dedicatedDeploymentResource{}
 var _ resource.ResourceWithConfigure = &dedicatedDeploymentResource{}
+var _ resource.ResourceWithImportState = &dedicatedDeploymentResource{}
 
 func NewDedicatedDeploymentResource() resource.Resource {
 	return &dedicatedDeploymentResource{}
@@ -99,7 +105,14 @@ func (r *dedicatedDeploymentResource) Schema(_ context.Context, _ resource.Schem
 			},
 			"name": rschema.StringAttribute{
 				Required:    true,
-				Description: "Deployment name. This is the stable Terraform-facing name and becomes part of the computed model_alias.",
+				Description: "Deployment name. Must be 2-32 characters containing only lowercase letters, numbers, and hyphens. This is the stable Terraform-facing name and becomes part of the computed model_alias.",
+				Validators: []validator.String{
+					stringvalidator.LengthBetween(2, 32),
+					stringvalidator.RegexMatches(
+						dedicatedDeploymentNameRegexp,
+						"must contain only lowercase letters, numbers, and hyphens",
+					),
+				},
 			},
 			"model": rschema.StringAttribute{
 				Required:    true,
@@ -209,7 +222,7 @@ func (r *dedicatedDeploymentResource) Schema(_ context.Context, _ resource.Schem
 						Description: "Minimum replica count.",
 					},
 					"max_replicas": rschema.Int64Attribute{
-						Required:    true,
+						Optional:    true,
 						Description: "Maximum replica count.",
 					},
 					"target_connections_per_replica": rschema.Int64Attribute{
@@ -350,6 +363,10 @@ func (r *dedicatedDeploymentResource) Delete(ctx context.Context, req resource.D
 	if err := r.waitUntilDeleted(ctx, id); err != nil {
 		resp.Diagnostics.AddError("Dedicated deployment was not deleted", err.Error())
 	}
+}
+
+func (r *dedicatedDeploymentResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
 func expandDeployment(ctx context.Context, model dedicatedDeploymentResourceModel) (parasail.DedicatedDeployment, diag.Diagnostics) {

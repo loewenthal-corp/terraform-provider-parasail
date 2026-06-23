@@ -1,0 +1,76 @@
+---
+name: ci
+
+"on":
+  workflow_dispatch:
+  pull_request:
+  merge_group:
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+env:
+  CI: "true"
+  GOPRIVATE: github.com/loewenthal-corp/
+
+jobs:
+  do:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        task:
+          - format
+          - lint
+          - examples:validate
+          - test
+          - security
+          - build
+    steps:
+      - name: Generate a token
+        id: generate-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          client-id: ${{ secrets.LOEWENTHAL_CORPORATION_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.LOEWENTHAL_CORPORATION_BOT_PRIVATE_SIGNING_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          token: ${{ steps.generate-token.outputs.token }}
+
+      - name: Activate Hermit
+        uses: cashapp/activate-hermit@e49f5cb4dd64ff0b0b659d1d8df499595451155a # v1
+        with:
+          cache: "true"
+
+      - name: Configure git to use generated token for github.com
+        env:
+          GH_APP_TOKEN: ${{ steps.generate-token.outputs.token }}
+        run: |
+          git config --global \
+            "url.https://x-access-token:${GH_APP_TOKEN}@github.com/.insteadOf" \
+            "https://github.com/"
+
+      - name: Run task
+        run: task ${{ matrix.task }}
+
+      - name: Verify generated files are committed
+        run: git diff --exit-code
+
+  check:
+    if: always()
+    needs:
+      - do
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - name: Decide whether the needed jobs succeeded or failed
+        uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe # release/v1
+        with:
+          jobs: ${{ toJSON(needs) }}

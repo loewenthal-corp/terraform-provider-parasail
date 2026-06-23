@@ -8,15 +8,29 @@ The initial implementation focuses on dedicated model deployments using the docu
 ## Development
 
 ```sh
-go mod tidy
-go test ./...
-go run ./cmd/terraform-provider-parasail
+source bin/activate-hermit
+task init
+task do
 ```
 
 Provider configuration can come from Terraform configuration or environment variables:
 
 - `PARASAIL_API_KEY`
 - `PARASAIL_ENDPOINT`, defaults to `https://api.parasail.io/api/v1`
+
+### Acceptance Tests
+
+Live acceptance tests use the Terraform provider test harness and create real
+Parasail dedicated deployments. Put `PARASAIL_API_KEY` in `.env` or export it in
+your shell before running them.
+
+```sh
+task test:acc:readonly # read-only support, device, and list checks
+task test:acc          # create, update, import, list, and destroy checks
+```
+
+The mutating suite uses `wait_for_online = false` to verify dedicated deployment
+lifecycle behavior without waiting for instances to finish serving traffic.
 
 ## Example
 

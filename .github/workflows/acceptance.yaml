@@ -1,0 +1,59 @@
+---
+name: acceptance
+
+"on":
+  workflow_dispatch:
+  schedule:
+    - cron: "0 13 * * 1-5"
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/acceptance.yaml"
+      - "Taskfile.yaml"
+      - "bin/**"
+      - "cmd/**"
+      - "go.mod"
+      - "go.sum"
+      - "internal/**"
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+    paths:
+      - ".github/workflows/acceptance.yaml"
+      - "Taskfile.yaml"
+      - "bin/**"
+      - "cmd/**"
+      - "go.mod"
+      - "go.sum"
+      - "internal/**"
+
+permissions:
+  contents: read
+
+env:
+  CI: "true"
+  GOPRIVATE: github.com/loewenthal-corp/
+
+jobs:
+  live:
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'live-acceptance')
+    runs-on: ubuntu-24.04
+    env:
+      PARASAIL_API_KEY: ${{ secrets.PARASAIL_API_KEY }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Activate Hermit
+        uses: cashapp/activate-hermit@e49f5cb4dd64ff0b0b659d1d8df499595451155a # v1
+        with:
+          cache: "true"
+
+      - name: Skip without Parasail API key
+        if: env.PARASAIL_API_KEY == ''
+        run: echo "PARASAIL_API_KEY secret is not configured; skipping live acceptance tests."
+
+      - name: Run live acceptance tests
+        if: env.PARASAIL_API_KEY != ''
+        run: task test:acc

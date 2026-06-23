@@ -1,14 +1,27 @@
-.PHONY: build test fmt tidy
+.PHONY: build test fmt tidy do lint security clean
+
+TASK ?= ./bin/task
+
+do:
+	$(TASK) do
 
 build:
-	go build -o bin/terraform-provider-parasail ./cmd/terraform-provider-parasail
+	$(TASK) build
 
 test:
-	go test ./...
+	$(TASK) test
 
 fmt:
-	gofmt -w $$(find . -name '*.go' -not -path './.terraform/*')
+	$(TASK) format
+
+lint:
+	$(TASK) lint
+
+security:
+	$(TASK) security
 
 tidy:
 	go mod tidy
 
+clean:
+	$(TASK) clean
