@@ -1,16 +1,35 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    // Org defaults: config:best-practices, hermit + GitHub Actions automerge,
-    // lock file maintenance, and vulnerability alerts.
-    "github>loewenthal-corp/infrastructure//renovate/default"
-  ],
+  "extends": ["config:best-practices", ":ignoreUnstable"],
   "postUpdateOptions": ["gomodTidy", "gomodUpdateImportPaths"],
   "packageRules": [
     {
-      "description": "Hermit-managed tools (Go, Terraform, OpenTofu, linters, scanners) land together",
+      "description": "Examples reference this provider itself; never bump it from Renovate",
+      "matchManagers": ["terraform"],
+      "matchDepTypes": ["provider"],
+      "enabled": false
+    },
+    {
+      "description": "Hermit-managed tools (Go, Terraform, OpenTofu, linters, scanners) land together and merge on green CI",
       "matchDatasources": ["hermit"],
-      "groupName": "hermit tools"
+      "groupName": "hermit tools",
+      "automerge": true
+    },
+    {
+      "description": "GitHub runner images merge on green CI",
+      "matchDatasources": ["github-runners"],
+      "automerge": true
+    },
+    {
+      "description": "GitHub Actions pin bumps merge on green CI",
+      "matchManagers": ["github-actions"],
+      "automerge": true
+    },
+    {
+      "description": "stale.yaml is Tofu-managed; pin bumps belong in the infrastructure template",
+      "matchManagers": ["github-actions"],
+      "matchFileNames": [".github/workflows/stale.yaml"],
+      "enabled": false
     },
     {
       "description": "The Terraform plugin libraries are released together and depend on each other",
@@ -40,5 +59,16 @@
       "matchDepTypes": ["golang", "toolchain"],
       "enabled": false
     }
-  ]
+  ],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true
+  },
+  "prConcurrentLimit": 3,
+  "prHourlyLimit": 6,
+  "vulnerabilityAlerts": {
+    "labels": ["security"],
+    "schedule": ["before 8am"],
+    "prConcurrentLimit": 3
+  }
 }
