@@ -72,7 +72,7 @@ resource "parasail_dedicated_deployment" "llama" {
   }
 
   gpu {
-    type  = "A100_80GB"
+    type  = "H200SXM"
     count = 4
   }
 

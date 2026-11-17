@@ -8,7 +8,7 @@ resource "parasail_dedicated_deployment" "example" {
   # Repeat gpu blocks to offer more than one acceptable hardware profile.
   # Parasail provisions using any selected profile that has capacity.
   gpu {
-    type  = "L40S"
+    type  = "RTX5090"
     count = 1
   }
 

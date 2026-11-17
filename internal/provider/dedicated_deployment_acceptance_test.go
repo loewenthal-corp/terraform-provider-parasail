@@ -42,8 +42,8 @@ func TestAccDedicatedDataSources_readOnly(t *testing.T) {
 					testAccCheckPositiveCount("data.parasail_dedicated_device_configs.qwen", "configs.#"),
 					testAccCheckDeviceConfigsContain(
 						"data.parasail_dedicated_device_configs.qwen",
-						testAccGPU{Type: "L40S", Count: 1},
-						testAccGPU{Type: "RTX4090", Count: 1},
+						testAccGPU{Type: "RTX5090", Count: 1},
+						testAccGPU{Type: "RTX6000PRO", Count: 1},
 					),
 					resource.TestCheckResourceAttrSet("data.parasail_dedicated_deployments.existing", "deployments.#"),
 				),
@@ -57,8 +57,8 @@ func TestAccDedicatedDeployment_multiGPULifecycle(t *testing.T) {
 
 	name := testAccName("multi")
 	gpus := []testAccGPU{
-		{Type: "L40S", Count: 1},
-		{Type: "RTX4090", Count: 1},
+		{Type: "RTX5090", Count: 1},
+		{Type: "RTX6000PRO", Count: 1},
 	}
 
 	resource.Test(t, resource.TestCase{
@@ -75,9 +75,9 @@ func TestAccDedicatedDeployment_multiGPULifecycle(t *testing.T) {
 					resource.TestCheckResourceAttr("parasail_dedicated_deployment.test", "mode", "AUTO"),
 					resource.TestCheckResourceAttr("parasail_dedicated_deployment.test", "scale_down_after", "30m"),
 					resource.TestCheckResourceAttr("parasail_dedicated_deployment.test", "gpu.#", "2"),
-					resource.TestCheckResourceAttr("parasail_dedicated_deployment.test", "gpu.0.type", "L40S"),
+					resource.TestCheckResourceAttr("parasail_dedicated_deployment.test", "gpu.0.type", "RTX5090"),
 					resource.TestCheckResourceAttr("parasail_dedicated_deployment.test", "gpu.0.count", "1"),
-					resource.TestCheckResourceAttr("parasail_dedicated_deployment.test", "gpu.1.type", "RTX4090"),
+					resource.TestCheckResourceAttr("parasail_dedicated_deployment.test", "gpu.1.type", "RTX6000PRO"),
 					resource.TestCheckResourceAttr("parasail_dedicated_deployment.test", "gpu.1.count", "1"),
 					resource.TestCheckResourceAttrSet("parasail_dedicated_deployment.test", "id"),
 					resource.TestCheckResourceAttrSet("parasail_dedicated_deployment.test", "model_alias"),
@@ -128,7 +128,7 @@ func TestAccDedicatedDeployment_autoscaling(t *testing.T) {
 	testAccSkipMutating(t)
 
 	name := testAccName("autoscale")
-	gpus := []testAccGPU{{Type: "L40S", Count: 1}}
+	gpus := []testAccGPU{{Type: "RTX5090", Count: 1}}
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -203,14 +203,14 @@ data "parasail_dedicated_deployments" "existing" {}
 func testAccDedicatedDeploymentConfig(name string, scaleDownAfter string, autoscaling bool) string {
 	gpuBlocks := `
   gpu {
-    type  = "L40S"
+    type  = "RTX5090"
     count = 1
   }
 `
 	if !autoscaling {
 		gpuBlocks += `
   gpu {
-    type  = "RTX4090"
+    type  = "RTX6000PRO"
     count = 1
   }
 `

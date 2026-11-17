@@ -23,7 +23,7 @@ resource "parasail_dedicated_deployment" "llama" {
   # Optional alternate profile. Parasail can choose any selected profile
   # that satisfies the deployment and available capacity.
   gpu {
-    type  = "A100_80GB"
+    type  = "H200SXM"
     count = 4
   }
 
