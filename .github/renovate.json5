@@ -1,6 +1,44 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
+    // Org defaults: config:best-practices, hermit + GitHub Actions automerge,
+    // lock file maintenance, and vulnerability alerts.
     "github>loewenthal-corp/infrastructure//renovate/default"
+  ],
+  "postUpdateOptions": ["gomodTidy", "gomodUpdateImportPaths"],
+  "packageRules": [
+    {
+      "description": "Hermit-managed tools (Go, Terraform, OpenTofu, linters, scanners) land together",
+      "matchDatasources": ["hermit"],
+      "groupName": "hermit tools"
+    },
+    {
+      "description": "The Terraform plugin libraries are released together and depend on each other",
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["github.com/hashicorp/terraform-plugin-**"],
+      "groupName": "terraform plugin libraries"
+    },
+    {
+      "description": "Renovate skips indirect Go modules by default; batch them into one weekly PR",
+      "matchManagers": ["gomod"],
+      "matchDepTypes": ["indirect"],
+      "enabled": true,
+      "groupName": "indirect go modules",
+      "schedule": ["before 8am on monday"],
+      "automerge": true
+    },
+    {
+      "description": "Minor and patch Go module bumps merge on green CI",
+      "matchManagers": ["gomod"],
+      "matchDepTypes": ["require"],
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "automerge": true
+    },
+    {
+      "description": "Keep the go directive in go.mod as the declared minimum; hermit pins the toolchain",
+      "matchManagers": ["gomod"],
+      "matchDepTypes": ["golang", "toolchain"],
+      "enabled": false
+    }
   ]
 }
