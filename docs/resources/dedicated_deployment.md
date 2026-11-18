@@ -3,41 +3,78 @@
 page_title: "parasail_dedicated_deployment Resource - parasail"
 subcategory: ""
 description: |-
-  Manages a Parasail dedicated model deployment.
+  Manages a Parasail dedicated model deployment: a model served on GPUs reserved for your account and exposed through Parasail's OpenAI-compatible API under model_alias.
+  Use parasail_dedicated_model_support to check that a model can be deployed and parasail_dedicated_device_configs to list the GPU types and counts Parasail offers for it.
 ---
 
 # parasail_dedicated_deployment (Resource)
 
-Manages a Parasail dedicated model deployment.
+Manages a Parasail dedicated model deployment: a model served on GPUs reserved for your account and exposed through Parasail's OpenAI-compatible API under `model_alias`.
+
+Use `parasail_dedicated_model_support` to check that a model can be deployed and `parasail_dedicated_device_configs` to list the GPU types and counts Parasail offers for it.
 
 ## Example Usage
 
 ```terraform
-resource "parasail_dedicated_deployment" "example" {
-  name  = "qwen-example"
-  model = "Qwen/Qwen2.5-7B-Instruct"
+# Autoscaling deployment of an open model on single-GPU replicas.
+resource "parasail_dedicated_deployment" "qwen" {
+  name        = "qwen-chat"
+  model       = "Qwen/Qwen2.5-7B-Instruct"
+  description = "Chat assistant backend"
+  tags        = ["team:platform", "env:prod"]
 
-  engine = "VLLM"
-  mode   = "AUTO"
-
-  # Repeat gpu blocks to offer more than one acceptable hardware profile.
-  # Parasail provisions using any selected profile that has capacity.
+  # Repeat gpu blocks to offer alternatives. Parasail provisions each
+  # replica on any listed configuration that has capacity.
   gpu {
     type  = "RTX5090"
     count = 1
   }
 
+  gpu {
+    type  = "H100SXM"
+    count = 1
+  }
+
   autoscaling {
     min_replicas                   = 1
-    max_replicas                   = 5
+    max_replicas                   = 4
     target_connections_per_replica = 16
   }
 
-  scale_down_after = "8h"
+  # Scale down after 2 hours idle. Use "never" to keep it running.
+  scale_down_after = "2h"
 }
 
-output "model_alias" {
-  value = parasail_dedicated_deployment.example.model_alias
+# Fixed-size deployment of a gated model, using a Hugging Face token and
+# returning as soon as Parasail accepts the request.
+variable "hf_token" {
+  type      = string
+  sensitive = true
+}
+
+resource "parasail_dedicated_deployment" "llama" {
+  name             = "llama-batch"
+  model            = "meta-llama/Llama-3.1-8B-Instruct"
+  model_access_key = var.hf_token
+
+  gpu {
+    type  = "H100SXM"
+    count = 1
+  }
+
+  context_length       = 32768
+  max_output_tokens    = 4096
+  max_request_duration = "10m"
+  scale_down_after     = "never"
+  wait_for_online      = false
+}
+
+# Send requests to base_url with model = model_alias.
+output "qwen_endpoint" {
+  value = {
+    base_url = parasail_dedicated_deployment.qwen.base_url
+    model    = parasail_dedicated_deployment.qwen.model_alias
+  }
 }
 ```
 
@@ -46,46 +83,46 @@ output "model_alias" {
 
 ### Required
 
-- `model` (String) Model name or Hugging Face model ID.
-- `name` (String) Deployment name. Must be 2-32 characters containing only lowercase letters, numbers, and hyphens. This is the stable Terraform-facing name and becomes part of the computed model_alias.
+- `model` (String) Hugging Face model ID to serve, such as `Qwen/Qwen2.5-7B-Instruct`.
+- `name` (String) Deployment name. Must be 2-32 characters of lowercase letters, numbers, and hyphens (`^[a-z0-9-]+$`). Parasail prefixes it with your account name to build `model_alias`.
 
 ### Optional
 
-- `autoscaling` (Block, Optional) Autoscaling settings. Omit this block for a fixed-size deployment. (see [below for nested schema](#nestedblock--autoscaling))
-- `chat_template` (String) Chat template override.
-- `context_length` (Number) Maximum context window override.
+- `autoscaling` (Block, Optional) Enables autoscaling. Omit this block for a fixed-size deployment with one replica. (see [below for nested schema](#nestedblock--autoscaling))
+- `chat_template` (String) Jinja chat template that overrides the model's default.
+- `context_length` (Number) Context window override in tokens. Must be at least 1. If omitted, the model's native context length is used.
 - `description` (String) Human-readable deployment description.
-- `draft_model` (String) Draft model for speculative decoding.
-- `draft_model_access_key` (String, Sensitive) Draft model access key.
-- `engine` (String) Inference engine. Defaults to VLLM.
-- `gpu` (Block List) A GPU configuration to make available to the scheduler. Most deployments should use one gpu block. (see [below for nested schema](#nestedblock--gpu))
-- `max_connections_per_replica` (Number) Maximum concurrent requests per replica.
-- `max_output_tokens` (Number) Maximum output tokens.
-- `max_request_duration` (String) Maximum request duration, such as "5m" or "30s".
-- `mode` (String) Model serving mode. Defaults to AUTO. API values include AUTO, GENERATE, EMBED, SCORE, TRANSCRIPTION, SPEECH, TEXT2IMAGE, IMAGE2IMAGE, and INPAINTING.
-- `model_access_key` (String, Sensitive) Private model access key, such as a Hugging Face token.
-- `scale_down_after` (String) How long to keep replicas running before scaling down, such as "8h" or "30m". Use "never" to disable scale-down. Defaults to 8h.
-- `tags` (List of String) Deployment tags.
-- `wait_for_online` (Boolean) Wait for the deployment status to become ONLINE after create/update. Defaults to true.
+- `draft_model` (String) Hugging Face model ID of a draft model for speculative decoding.
+- `draft_model_access_key` (String, Sensitive) Access key for a private or gated `draft_model`. Parasail does not return it, so it is not populated on import.
+- `engine` (String) Inference engine. Defaults to `VLLM`. Use `parasail_dedicated_model_support` to list the engines that support a model.
+- `gpu` (Block List) A GPU type and count Parasail may use for each replica. At least one block is required. Repeat the block to offer alternatives: Parasail provisions on any listed configuration that has capacity. Valid combinations come from `parasail_dedicated_device_configs`. (see [below for nested schema](#nestedblock--gpu))
+- `max_connections_per_replica` (Number) Maximum concurrent requests per replica. Must be at least 1. If omitted, Parasail's default applies.
+- `max_output_tokens` (Number) Maximum completion tokens per request. Must be at least 1. If omitted, Parasail's default applies.
+- `max_request_duration` (String) Maximum request duration as a positive Go duration, such as `5m`, `30s`, or `1500ms`. If omitted, Parasail's default applies.
+- `mode` (String) Model serving mode. Defaults to `AUTO`, which lets Parasail infer the task from the model. Other API values include `GENERATE`, `EMBED`, `SCORE`, `TRANSCRIPTION`, `SPEECH`, `TEXT2IMAGE`, `IMAGE2IMAGE`, and `INPAINTING`. When `AUTO` is configured, the task Parasail resolves is not treated as drift.
+- `model_access_key` (String, Sensitive) Access key for a private or gated model, such as a Hugging Face token. Parasail does not return it, so it is not populated on import.
+- `scale_down_after` (String) How long an idle deployment keeps running before Parasail scales it down, as a Go duration such as `8h`, `30m`, or `90s`. Use `never` to disable scale-down. Defaults to `8h`.
+- `tags` (List of String) Free-form tags attached to the deployment.
+- `wait_for_online` (Boolean) Wait for the deployment status to become `ONLINE` after create and update, bounded by the provider's `operation_timeout_minutes`. Defaults to `true`. Set to `false` to return as soon as Parasail accepts the change. This is a provider-side setting and is not populated on import.
 
 ### Read-Only
 
-- `base_url` (String) Parasail gateway base URL.
-- `deployment_available_at` (Number) Unix epoch milliseconds when the deployment first became available.
-- `id` (String) Parasail deployment ID.
-- `model_alias` (String) The model identifier to use in OpenAI-compatible inference requests.
-- `status` (String) Deployment status.
-- `status_message` (String) Deployment status message.
+- `base_url` (String) OpenAI-compatible base URL for inference requests, such as `https://api.parasail.io/v1`.
+- `deployment_available_at` (Number) Unix epoch milliseconds when the deployment first became available. Null until it has been online.
+- `id` (String) Numeric Parasail deployment ID, used for import.
+- `model_alias` (String) Model identifier to send as `model` in OpenAI-compatible requests to `base_url`.
+- `status` (String) Deployment status reported by Parasail, such as `STARTING`, `ONLINE`, `PAUSED`, or `ERROR`.
+- `status_message` (String) Detail for `status`, when Parasail provides one.
 
 <a id="nestedblock--autoscaling"></a>
 ### Nested Schema for `autoscaling`
 
 Optional:
 
-- `max_replicas` (Number) Maximum replica count.
-- `min_replicas` (Number) Minimum replica count.
-- `smoothing_factor` (Number) Autoscaling load smoothing factor. Defaults to the API behavior if omitted.
-- `target_connections_per_replica` (Number) Target active requests per replica.
+- `max_replicas` (Number) Maximum replica count. Must be at least 1. If omitted, Parasail's default applies.
+- `min_replicas` (Number) Minimum replica count. Defaults to `1`.
+- `smoothing_factor` (Number) Load smoothing factor for scaling decisions, such as `0.3`. Lower values react more slowly. If omitted, Parasail's default applies.
+- `target_connections_per_replica` (Number) Target concurrent requests per replica that triggers scaling. Must be at least 1. If omitted, Parasail's default applies.
 
 
 <a id="nestedblock--gpu"></a>
@@ -93,16 +130,28 @@ Optional:
 
 Required:
 
-- `count` (Number) Number of GPUs for this replica.
-- `type` (String) Device type, as returned by parasail_dedicated_device_configs.
+- `count` (Number) Number of GPUs per replica. Must be at least 1.
+- `type` (String) GPU type, such as `RTX5090`, `H100SXM`, or `B200SXM`. Matches `configs[*].device` in `parasail_dedicated_device_configs`.
 
 ## Import
 
 Import is supported using the following syntax:
 
+In Terraform v1.5.0 and later, the [`import` block](https://developer.hashicorp.com/terraform/language/import) can be used with the `id` attribute, for example:
+
+```terraform
+import {
+  to = parasail_dedicated_deployment.example
+  id = "12345"
+}
+```
+
 The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
-# Dedicated deployments are imported by their numeric Parasail deployment ID.
+# Import a dedicated deployment by its numeric Parasail deployment ID. The
+# parasail_dedicated_deployments data source lists the IDs of existing
+# deployments. model_access_key, draft_model_access_key, and wait_for_online
+# are not returned by Parasail; set them in configuration after importing.
 terraform import parasail_dedicated_deployment.example 12345
 ```

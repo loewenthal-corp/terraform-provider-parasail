@@ -58,48 +58,50 @@ func (d *dedicatedModelSupportDataSource) Configure(_ context.Context, req datas
 
 func (d *dedicatedModelSupportDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = dschema.Schema{
-		Description: "Checks whether Parasail supports a model for dedicated deployment.",
+		MarkdownDescription: "Checks whether Parasail can serve a model as a dedicated deployment, and which engines support it.",
 		Attributes: map[string]dschema.Attribute{
 			"model_name": dschema.StringAttribute{
-				Required:    true,
-				Description: "Model name or Hugging Face model ID.",
+				Required:            true,
+				MarkdownDescription: "Hugging Face model ID, such as `Qwen/Qwen2.5-7B-Instruct`.",
 			},
 			"model_access_key": dschema.StringAttribute{
-				Optional:    true,
-				Sensitive:   true,
-				Description: "Private model access key, such as a Hugging Face token.",
+				Optional:            true,
+				Sensitive:           true,
+				MarkdownDescription: "Access key for a private or gated model, such as a Hugging Face token.",
 			},
 			"model_access_key_from": dschema.Int64Attribute{
-				Optional:    true,
-				Description: "Existing deployment ID to reuse a stored model access key from.",
+				Optional:            true,
+				MarkdownDescription: "ID of an existing deployment whose stored model access key Parasail should reuse instead of `model_access_key`.",
 			},
 			"engine": dschema.StringAttribute{
-				Optional:    true,
-				Description: "Inference engine to check.",
+				Optional:            true,
+				MarkdownDescription: "Inference engine to check, such as `VLLM`. If omitted, Parasail checks its default engine.",
 			},
 			"supported": dschema.BoolAttribute{
-				Computed:    true,
-				Description: "Whether the model is supported.",
+				Computed:            true,
+				MarkdownDescription: "Whether the model can be deployed with `engine`.",
 			},
 			"known": dschema.BoolAttribute{
-				Computed:    true,
-				Description: "Whether Parasail recognizes the model.",
+				Computed:            true,
+				MarkdownDescription: "Whether Parasail recognizes the model, for example because it exists on Hugging Face and the access key can read it.",
 			},
 			"supporting_engines": dschema.ListAttribute{
-				Computed:    true,
-				ElementType: types.StringType,
-				Description: "Engines that support this model.",
+				Computed:            true,
+				ElementType:         types.StringType,
+				MarkdownDescription: "Engines that can serve the model.",
 			},
 			"messages": dschema.ListNestedAttribute{
-				Computed:    true,
-				Description: "Validation messages returned by the API.",
+				Computed:            true,
+				MarkdownDescription: "Validation messages from Parasail explaining the result.",
 				NestedObject: dschema.NestedAttributeObject{
 					Attributes: map[string]dschema.Attribute{
 						"level": dschema.StringAttribute{
-							Computed: true,
+							Computed:            true,
+							MarkdownDescription: "Message severity, such as `INFO`, `WARN`, or `ERROR`.",
 						},
 						"content": dschema.StringAttribute{
-							Computed: true,
+							Computed:            true,
+							MarkdownDescription: "Message text.",
 						},
 					},
 				},

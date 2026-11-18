@@ -3,23 +3,31 @@
 page_title: "parasail_dedicated_model_support Data Source - parasail"
 subcategory: ""
 description: |-
-  Checks whether Parasail supports a model for dedicated deployment.
+  Checks whether Parasail can serve a model as a dedicated deployment, and which engines support it.
 ---
 
 # parasail_dedicated_model_support (Data Source)
 
-Checks whether Parasail supports a model for dedicated deployment.
+Checks whether Parasail can serve a model as a dedicated deployment, and which engines support it.
 
 ## Example Usage
 
 ```terraform
-data "parasail_dedicated_model_support" "example" {
+data "parasail_dedicated_model_support" "qwen" {
   model_name = "Qwen/Qwen2.5-7B-Instruct"
   engine     = "VLLM"
 }
 
-output "supported" {
-  value = data.parasail_dedicated_model_support.example.supported
+output "qwen_supported" {
+  value = data.parasail_dedicated_model_support.qwen.supported
+}
+
+output "qwen_engines" {
+  value = data.parasail_dedicated_model_support.qwen.supporting_engines
+}
+
+output "qwen_messages" {
+  value = [for m in data.parasail_dedicated_model_support.qwen.messages : "${m.level}: ${m.content}"]
 }
 ```
 
@@ -28,25 +36,25 @@ output "supported" {
 
 ### Required
 
-- `model_name` (String) Model name or Hugging Face model ID.
+- `model_name` (String) Hugging Face model ID, such as `Qwen/Qwen2.5-7B-Instruct`.
 
 ### Optional
 
-- `engine` (String) Inference engine to check.
-- `model_access_key` (String, Sensitive) Private model access key, such as a Hugging Face token.
-- `model_access_key_from` (Number) Existing deployment ID to reuse a stored model access key from.
+- `engine` (String) Inference engine to check, such as `VLLM`. If omitted, Parasail checks its default engine.
+- `model_access_key` (String, Sensitive) Access key for a private or gated model, such as a Hugging Face token.
+- `model_access_key_from` (Number) ID of an existing deployment whose stored model access key Parasail should reuse instead of `model_access_key`.
 
 ### Read-Only
 
-- `known` (Boolean) Whether Parasail recognizes the model.
-- `messages` (Attributes List) Validation messages returned by the API. (see [below for nested schema](#nestedatt--messages))
-- `supported` (Boolean) Whether the model is supported.
-- `supporting_engines` (List of String) Engines that support this model.
+- `known` (Boolean) Whether Parasail recognizes the model, for example because it exists on Hugging Face and the access key can read it.
+- `messages` (Attributes List) Validation messages from Parasail explaining the result. (see [below for nested schema](#nestedatt--messages))
+- `supported` (Boolean) Whether the model can be deployed with `engine`.
+- `supporting_engines` (List of String) Engines that can serve the model.
 
 <a id="nestedatt--messages"></a>
 ### Nested Schema for `messages`
 
 Read-Only:
 
-- `content` (String)
-- `level` (String)
+- `content` (String) Message text.
+- `level` (String) Message severity, such as `INFO`, `WARN`, or `ERROR`.

@@ -3,23 +3,40 @@
 page_title: "parasail_dedicated_device_configs Data Source - parasail"
 subcategory: ""
 description: |-
-  Lists Parasail dedicated hardware configurations for a model.
+  Lists the GPU configurations Parasail offers for deploying a model, with price and availability. Use it to choose gpu blocks for parasail_dedicated_deployment. Configurations are returned in Parasail's order, roughly cheapest first.
 ---
 
 # parasail_dedicated_device_configs (Data Source)
 
-Lists Parasail dedicated hardware configurations for a model.
+Lists the GPU configurations Parasail offers for deploying a model, with price and availability. Use it to choose `gpu` blocks for `parasail_dedicated_deployment`. Configurations are returned in Parasail's order, roughly cheapest first.
 
 ## Example Usage
 
 ```terraform
-data "parasail_dedicated_device_configs" "example" {
+data "parasail_dedicated_device_configs" "qwen" {
   model_name = "Qwen/Qwen2.5-7B-Instruct"
   engine     = "VLLM"
 }
 
-output "first_device" {
-  value = data.parasail_dedicated_device_configs.example.configs[0].device
+locals {
+  # Single-GPU configurations, preferring ones with capacity right now.
+  single_gpu = [for c in data.parasail_dedicated_device_configs.qwen.configs : c if c.count == 1]
+  candidates = length([for c in local.single_gpu : c if c.available]) > 0 ? [for c in local.single_gpu : c if c.available] : local.single_gpu
+  cheapest   = [for c in local.candidates : c if c.cost == min([for x in local.candidates : x.cost]...)][0]
+}
+
+resource "parasail_dedicated_deployment" "qwen" {
+  name  = "qwen-cheapest"
+  model = data.parasail_dedicated_device_configs.qwen.model_name
+
+  gpu {
+    type  = local.cheapest.device
+    count = local.cheapest.count
+  }
+}
+
+output "price_per_hour" {
+  value = local.cheapest.cost
 }
 ```
 
@@ -28,31 +45,31 @@ output "first_device" {
 
 ### Required
 
-- `model_name` (String) Model name or Hugging Face model ID.
+- `model_name` (String) Hugging Face model ID, such as `Qwen/Qwen2.5-7B-Instruct`.
 
 ### Optional
 
-- `draft_model_access_key` (String, Sensitive) Draft model access key.
-- `draft_model_name` (String) Draft model name for speculative decoding.
-- `engine` (String) Inference engine. Defaults to VLLM server-side.
-- `model_access_key` (String, Sensitive) Private model access key, such as a Hugging Face token.
-- `model_access_key_from` (Number) Existing deployment ID to reuse a stored model access key from.
+- `draft_model_access_key` (String, Sensitive) Access key for a private or gated `draft_model_name`.
+- `draft_model_name` (String) Hugging Face model ID of a draft model for speculative decoding. Configurations then account for both models.
+- `engine` (String) Inference engine, such as `VLLM`. If omitted, Parasail uses its default engine.
+- `model_access_key` (String, Sensitive) Access key for a private or gated model, such as a Hugging Face token.
+- `model_access_key_from` (Number) ID of an existing deployment whose stored model access key Parasail should reuse instead of `model_access_key`.
 
 ### Read-Only
 
-- `configs` (Attributes List) Hardware configurations returned by the API. (see [below for nested schema](#nestedatt--configs))
+- `configs` (Attributes List) GPU configurations offered for the model. (see [below for nested schema](#nestedatt--configs))
 
 <a id="nestedatt--configs"></a>
 ### Nested Schema for `configs`
 
 Read-Only:
 
-- `available` (Boolean)
-- `cost` (Number)
-- `count` (Number)
-- `device` (String)
-- `display_name` (String)
-- `estimated_single_user_tps` (Number)
-- `estimated_system_tps` (Number)
-- `limited_context` (Boolean)
-- `recommended` (Boolean)
+- `available` (Boolean) Whether Parasail currently has capacity for this configuration.
+- `cost` (Number) Price per replica-hour in US dollars, as quoted by Parasail.
+- `count` (Number) GPUs per replica. Use as `gpu.count` on `parasail_dedicated_deployment`.
+- `device` (String) GPU type. Use as `gpu.type` on `parasail_dedicated_deployment`.
+- `display_name` (String) Human-readable configuration name, such as `H100SXM x 2`.
+- `estimated_single_user_tps` (Number) Estimated tokens per second for a single request, when Parasail provides one.
+- `estimated_system_tps` (Number) Estimated aggregate tokens per second per replica, when Parasail provides one.
+- `limited_context` (Boolean) Whether this configuration cannot fit the model's full context window.
+- `recommended` (Boolean) Whether Parasail recommends this configuration for the model.

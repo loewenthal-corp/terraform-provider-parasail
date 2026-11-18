@@ -1,38 +1,43 @@
+# Deploys a gated Llama model as a fixed-size deployment (one replica, no
+# autoscaling) that never scales down. Either GPU configuration is acceptable;
+# Parasail uses whichever has capacity.
+
 terraform {
   required_version = ">= 1.6.0"
 
   required_providers {
     parasail = {
       source  = "registry.terraform.io/loewenthal-corp/parasail"
-      version = ">= 0.1.0"
+      version = ">= 0.2.0"
     }
   }
 }
 
 provider "parasail" {}
 
+variable "hf_token" {
+  description = "Hugging Face token with access to meta-llama/Llama-3.1-8B-Instruct."
+  type        = string
+  sensitive   = true
+}
+
 resource "parasail_dedicated_deployment" "llama" {
-  name  = "llama-prod"
-  model = "meta-llama/Llama-3.1-8B-Instruct"
+  name             = "llama-prod"
+  model            = "meta-llama/Llama-3.1-8B-Instruct"
+  model_access_key = var.hf_token
 
   gpu {
     type  = "H100SXM"
-    count = 2
+    count = 1
   }
 
-  # Optional alternate profile. Parasail can choose any selected profile
-  # that satisfies the deployment and available capacity.
   gpu {
     type  = "H200SXM"
-    count = 4
+    count = 1
   }
 
-  autoscaling {
-    min_replicas = 1
-    max_replicas = 5
-  }
-
-  scale_down_after = "never"
+  max_connections_per_replica = 64
+  scale_down_after            = "never"
 }
 
 output "model_alias" {

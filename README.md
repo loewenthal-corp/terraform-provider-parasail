@@ -5,130 +5,217 @@
 > **public** Control API only, and depends on no Parasail internal code. "Parasail"
 > is used solely to describe the API the provider targets.
 
-This repository contains a Terraform (and OpenTofu) provider for Parasail's public
-Control API. The initial implementation focuses on dedicated model deployments using
-the documented `/api/v1/dedicated` API surface.
+A Terraform and OpenTofu provider for [Parasail](https://www.parasail.io/)
+dedicated model deployments, built on the `/api/v1/dedicated` Control API.
 
-Once published, the provider is sourced as `loewenthal-corp/parasail`:
+| Kind        | Name                                | Purpose                                                    |
+| ----------- | ----------------------------------- | ---------------------------------------------------------- |
+| Resource    | `parasail_dedicated_deployment`     | Create, update, import, and delete a dedicated deployment. |
+| Data source | `parasail_dedicated_model_support`  | Check whether a model can be deployed, and on which engines. |
+| Data source | `parasail_dedicated_device_configs` | List the GPU configurations, prices, and availability for a model. |
+| Data source | `parasail_dedicated_deployments`    | List every deployment in the account.                      |
+
+Full reference documentation is in [docs/](docs/) and on the Terraform Registry.
+
+## Usage
 
 ```hcl
 terraform {
   required_providers {
     parasail = {
       source  = "loewenthal-corp/parasail"
-      version = ">= 0.1.0"
+      version = ">= 0.2.0"
     }
   }
 }
-```
 
-Generated provider documentation lives in [docs/](docs/) and is published on the
-Terraform Registry.
+# Reads PARASAIL_API_KEY from the environment.
+provider "parasail" {}
 
-## Development
+resource "parasail_dedicated_deployment" "qwen" {
+  name  = "qwen-chat"
+  model = "Qwen/Qwen2.5-7B-Instruct"
 
-```sh
-source bin/activate-hermit
-task init
-task do
-```
-
-Provider configuration can come from Terraform configuration or environment variables:
-
-- `PARASAIL_API_KEY`
-- `PARASAIL_ENDPOINT`, defaults to `https://api.parasail.io/api/v1`
-
-### Acceptance Tests
-
-Live acceptance tests use the Terraform provider test harness and create real
-Parasail dedicated deployments. Put `PARASAIL_API_KEY` in `.env` or export it in
-your shell before running them.
-
-```sh
-task test:acc:readonly # read-only support, device, and list checks
-task test:acc          # create, update, import, list, and destroy checks
-```
-
-The mutating suite uses `wait_for_online = false` to verify dedicated deployment
-lifecycle behavior without waiting for instances to finish serving traffic.
-
-## Example
-
-See [examples/basic/main.tf](examples/basic/main.tf).
-
-The resource is intentionally shaped around deployment intent rather than the raw
-API payload:
-
-```hcl
-resource "parasail_dedicated_deployment" "llama" {
-  name  = "llama-prod"
-  model = "meta-llama/Llama-3.1-8B-Instruct"
-
-  # Repeat gpu blocks to allow more than one acceptable hardware profile.
-  # The API chooses from these selected profiles when provisioning.
+  # Repeat gpu blocks to offer alternatives; Parasail provisions each replica
+  # on any listed configuration that has capacity.
   gpu {
-    type  = "H100SXM"
-    count = 2
+    type  = "RTX5090"
+    count = 1
   }
 
   gpu {
-    type  = "H200SXM"
-    count = 4
+    type  = "H100SXM"
+    count = 1
   }
 
   autoscaling {
     min_replicas = 1
-    max_replicas = 5
+    max_replicas = 4
   }
 
-  scale_down_after = "never"
+  scale_down_after = "2h" # or "never"
 }
 
-output "model_alias" {
-  value = parasail_dedicated_deployment.llama.model_alias
+# OpenAI-compatible endpoint: POST {base_url}/chat/completions with model = model_alias.
+output "endpoint" {
+  value = {
+    base_url = parasail_dedicated_deployment.qwen.base_url
+    model    = parasail_dedicated_deployment.qwen.model_alias
+  }
 }
 ```
 
-## Documentation
-
-Registry docs under [docs/](docs/) are generated from the provider schema and the
-files in [examples/](examples/) with
-[`tfplugindocs`](https://github.com/hashicorp/terraform-plugin-docs):
+GPU types come from Parasail's catalog, which changes over time and differs per
+model. Use `parasail_dedicated_device_configs` to pick one programmatically, as in
+[examples/basic](examples/basic/main.tf), or check what's offered today:
 
 ```sh
-task docs           # regenerate docs/ and validate them
-task docs:validate  # validate only
+curl -s -H "Authorization: Bearer $PARASAIL_API_KEY" \
+  "https://api.parasail.io/api/v1/dedicated/devices?engine=VLLM&modelName=Qwen/Qwen2.5-7B-Instruct"
 ```
 
-`task do` and CI regenerate and validate docs, so edit the schema/examples rather
-than the generated Markdown.
+Existing deployments can be imported by their numeric ID, which
+`parasail_dedicated_deployments` lists:
 
-## Releasing & Publishing
+```sh
+terraform import parasail_dedicated_deployment.qwen 12345
+```
 
-Releases are automated:
+Provider settings can come from configuration or the environment:
 
-1. [release-please](https://github.com/googleapis/release-please) opens a release
-   PR from Conventional Commits. Merging it tags `vX.Y.Z` and creates a GitHub
-   release.
-2. The `goreleaser` job in [release.yaml](.github/workflows/release.yaml) then
-   builds the provider for all target platforms and attaches the artifacts the
-   Terraform Registry ingests: the per-platform zips, `*_SHA256SUMS`,
+| Argument                    | Environment variable | Default                          |
+| --------------------------- | -------------------- | -------------------------------- |
+| `api_key`                   | `PARASAIL_API_KEY`   | required                         |
+| `endpoint`                  | `PARASAIL_ENDPOINT`  | `https://api.parasail.io/api/v1` |
+| `request_timeout_seconds`   |                      | `60`                             |
+| `poll_interval_seconds`     |                      | `30`                             |
+| `operation_timeout_minutes` |                      | `60`                             |
+
+More examples: [examples/fixed-gpu](examples/fixed-gpu/main.tf) (a fixed-size
+deployment of a gated model) and the per-resource snippets under
+[examples/resources](examples/resources/) and
+[examples/data-sources](examples/data-sources/).
+
+## Development
+
+Tools (Go, Terraform, OpenTofu, golangci-lint, tflint, typos, gitleaks, trivy,
+task) are pinned with [Hermit](https://cashapp.github.io/hermit/), so the only
+prerequisite is a POSIX shell:
+
+```sh
+source bin/activate-hermit   # or put ./bin on PATH
+task init                    # download Go modules and tflint plugins
+task do                      # everything CI runs
+```
+
+`task --list` shows every target. The ones CI runs, each as its own job:
+
+| Task                     | What it does                                                        |
+| ------------------------ | ------------------------------------------------------------------- |
+| `task format`            | `gofmt` and `tofu fmt`                                              |
+| `task lint`              | golangci-lint, tflint, and typos                                    |
+| `task examples:validate` | builds the provider and runs `tofu validate` on each `examples/*` directory |
+| `task docs`              | regenerates `docs/` with tfplugindocs and validates it              |
+| `task test`              | unit tests with `-race` and coverage                                |
+| `task security`          | govulncheck, gitleaks, and trivy                                    |
+| `task build`             | builds `dist/terraform-provider-parasail`                           |
+
+CI also fails if any of these leave uncommitted changes, so commit regenerated
+files.
+
+### Code layout
+
+- `internal/client`: a small HTTP client for the Parasail dedicated API.
+- `internal/provider`: the provider, resource, and data sources
+  (terraform-plugin-framework).
+- `examples/`: runnable configurations and the snippets embedded in the docs.
+- `templates/`: tfplugindocs templates that override the generated pages.
+- `dev/provider-bugs.md`: provider bugs found during testing, and how they were
+  fixed.
+
+### Unit tests
+
+`task test` needs no network or API key. Besides plain Go tests of the client,
+schema, validators, and state mapping, `internal/provider/provider_unit_test.go`
+drives the provider through the real Terraform CLI (from Hermit) against an
+in-memory fake of the Parasail API in `fake_api_test.go`. Those cover create,
+update, import, drift, out-of-band deletion, plan-time validation, and failed
+waits. Extend the fake when the provider starts using a new endpoint or field.
+
+### Acceptance tests
+
+Acceptance tests run against the live Parasail API. Put a test key in `.env`
+(it is gitignored) or export it:
+
+```sh
+echo 'PARASAIL_API_KEY=...' > .env
+task test:acc:readonly   # data sources only; creates nothing
+task test:acc            # full suite: creates, updates, imports, and deletes deployments
+```
+
+To keep a run cheap and fast, the mutating tests:
+
+- pick the cheapest single-GPU configurations from the live
+  `/dedicated/devices` catalog instead of hard-coding GPU types, so they keep
+  working when Parasail changes its catalog;
+- set `wait_for_online = false`, so they verify the API lifecycle without
+  waiting for GPUs to be scheduled;
+- name deployments `tfpacc-<test>-<unix time>` and, if a step fails, delete the
+  test's own deployment by exact name in a cleanup hook. They never touch other
+  deployments in the account.
+
+After a run, `data "parasail_dedicated_deployments"` or the dashboard should show
+no `tfpacc-` deployments.
+
+In CI, the [acceptance workflow](.github/workflows/acceptance.yaml) runs on
+weekdays, on pushes to `main`, and on pull requests labelled `live-acceptance`,
+using the `PARASAIL_API_KEY` repository secret.
+
+### Trying a local build
+
+```sh
+task build
+cat > dev.tfrc <<EOF
+provider_installation {
+  dev_overrides {
+    "registry.terraform.io/loewenthal-corp/parasail" = "$PWD/dist"
+  }
+  direct {}
+}
+EOF
+cd examples/basic && TF_CLI_CONFIG_FILE=../../dev.tfrc terraform plan
+```
+
+## Releasing
+
+Releases are automated from [Conventional Commits](https://www.conventionalcommits.org/):
+
+1. Merge pull requests with conventional titles (`feat:`, `fix:`, `docs:`,
+   `chore:`). The `conventional-pr` workflow checks PR titles.
+2. [release-please](https://github.com/googleapis/release-please) keeps a release
+   PR open with the next version and the `CHANGELOG.md` entries. `feat` bumps the
+   minor version and `fix` bumps the patch version. Before 1.0, breaking changes
+   also bump only the minor version.
+3. Merging the release PR tags `vX.Y.Z` and creates a GitHub release.
+4. The `goreleaser` job in [release.yaml](.github/workflows/release.yaml) builds
+   the provider for every target platform and attaches the artifacts the
+   Terraform Registry ingests: per-platform zips, `*_SHA256SUMS`,
    `*_SHA256SUMS.sig` (GPG detached signature), and `*_manifest.json`.
+5. The registry's release webhook picks up the new version.
 
-### One-time setup to publish to the Terraform Registry
+Don't edit `CHANGELOG.md` or `.release-please-manifest.json` by hand.
+
+### One-time registry setup
 
 1. Make this repository **public**.
-2. Generate a GPG signing key (RSA/DSA, not ECC), then:
-   - Add the **public** key at <https://registry.terraform.io> → *User Settings →
-     Signing Keys*.
-   - Add the **private** key and its passphrase as repository secrets
+2. Generate a GPG signing key (RSA or DSA, not ECC), then:
+   - add the **public** key at <https://registry.terraform.io> → *User Settings →
+     Signing Keys*;
+   - add the **private** key and its passphrase as the repository secrets
      `GPG_PRIVATE_KEY` (ASCII-armored) and `PASSPHRASE`.
-3. On the registry, *Publish → Provider* and select this repo. The registry adds a
-   release webhook and ingests each finalized release automatically.
+3. On the registry, choose *Publish → Provider* and select this repository.
 
-Provider metadata for the registry lives in
+Registry metadata lives in
 [`terraform-registry-manifest.json`](terraform-registry-manifest.json)
-(`protocol_versions: ["6.0"]`, terraform-plugin-framework).
-
-Preview the rendered registry pages at
-<https://registry.terraform.io/tools/doc-preview>.
+(`protocol_versions: ["6.0"]`, terraform-plugin-framework). Preview rendered
+pages at <https://registry.terraform.io/tools/doc-preview>.
