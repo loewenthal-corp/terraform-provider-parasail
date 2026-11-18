@@ -38,7 +38,7 @@ jobs:
     if: >-
       github.event_name != 'pull_request' ||
       contains(github.event.pull_request.labels.*.name, 'live-acceptance')
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     env:
       PARASAIL_API_KEY: ${{ secrets.PARASAIL_API_KEY }}
     steps:
