@@ -48,28 +48,29 @@ func (p *parasailProvider) Metadata(_ context.Context, _ provider.MetadataReques
 
 func (p *parasailProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Unofficial Terraform provider for Parasail. It is a community project, not affiliated with or endorsed by Parasail, and is built entirely on top of Parasail's public Control API.",
+		MarkdownDescription: "Unofficial Terraform and OpenTofu provider for [Parasail](https://www.parasail.io/) dedicated model deployments. " +
+			"It is a community project, not affiliated with or endorsed by Parasail, and uses only Parasail's public Control API.",
 		Attributes: map[string]schema.Attribute{
 			"api_key": schema.StringAttribute{
-				Optional:    true,
-				Sensitive:   true,
-				Description: "Parasail API key. May also be set with PARASAIL_API_KEY.",
+				Optional:            true,
+				Sensitive:           true,
+				MarkdownDescription: "Parasail API key. Can also be set with the `PARASAIL_API_KEY` environment variable; the provider argument takes precedence.",
 			},
 			"endpoint": schema.StringAttribute{
-				Optional:    true,
-				Description: "Parasail API endpoint. May also be set with PARASAIL_ENDPOINT.",
+				Optional:            true,
+				MarkdownDescription: "Parasail Control API base URL. Must be an absolute URL. Can also be set with `PARASAIL_ENDPOINT`. Defaults to `https://api.parasail.io/api/v1`.",
 			},
 			"request_timeout_seconds": schema.Int64Attribute{
-				Optional:    true,
-				Description: "HTTP request timeout in seconds. Defaults to 60.",
+				Optional:            true,
+				MarkdownDescription: "Timeout for each HTTP request, in seconds. Defaults to `60`; values of 0 or less use the default.",
 			},
 			"poll_interval_seconds": schema.Int64Attribute{
-				Optional:    true,
-				Description: "Polling interval for asynchronous deployment operations. Defaults to 30.",
+				Optional:            true,
+				MarkdownDescription: "How often to poll deployment status while waiting for `ONLINE` or for deletion, in seconds. Defaults to `30`; values of 0 or less use the default.",
 			},
 			"operation_timeout_minutes": schema.Int64Attribute{
-				Optional:    true,
-				Description: "Timeout for asynchronous deployment operations. Defaults to 60.",
+				Optional:            true,
+				MarkdownDescription: "Maximum time to wait for a deployment to become `ONLINE` or to be deleted, in minutes. Defaults to `60`; values of 0 or less use the default.",
 			},
 		},
 	}

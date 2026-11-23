@@ -1,0 +1,38 @@
+---
+page_title: "{{.ProviderShortName}} Provider"
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.ProviderShortName}} Provider
+
+{{ .Description | trimspace }}
+
+The provider manages [dedicated deployments](https://docs.parasail.io/), which serve a
+Hugging Face model on GPUs reserved for your account. Each deployment exposes an
+OpenAI-compatible endpoint: send requests to its `base_url` with `model` set to its
+`model_alias`.
+
+## Authentication
+
+Create an API key in the Parasail dashboard and either export it:
+
+```shell
+export PARASAIL_API_KEY="..."
+```
+
+or pass it as `api_key`, ideally from a sensitive variable as in the example below.
+The `api_key` argument takes precedence over the environment variable.
+
+## Choosing GPUs
+
+Parasail's GPU catalog changes over time and differs per model. Rather than
+hard-coding GPU types, look them up with
+[`parasail_dedicated_device_configs`](data-sources/dedicated_device_configs.md), which
+returns each configuration's price and current availability.
+
+## Example Usage
+
+{{ tffile "examples/provider/provider.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}

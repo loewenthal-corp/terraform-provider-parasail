@@ -4,7 +4,7 @@ terraform {
   required_providers {
     parasail = {
       source  = "registry.terraform.io/loewenthal-corp/parasail"
-      version = ">= 0.1.0"
+      version = ">= 0.2.0"
     }
   }
 }

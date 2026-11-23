@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -59,9 +60,10 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("parasail api returned HTTP %d: %s", e.StatusCode, e.Body)
 }
 
+// IsNotFound reports whether err is, or wraps, an APIError with HTTP 404.
 func IsNotFound(err error) bool {
-	apiErr, ok := err.(*APIError)
-	return ok && apiErr.StatusCode == http.StatusNotFound
+	var apiErr *APIError
+	return errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound
 }
 
 func (c *Client) do(ctx context.Context, method string, path string, query url.Values, body any, out any) error {

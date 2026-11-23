@@ -3,20 +3,29 @@
 page_title: "parasail_dedicated_deployments Data Source - parasail"
 subcategory: ""
 description: |-
-  Lists existing Parasail dedicated model deployments visible to the configured API key.
+  Lists every Parasail dedicated deployment visible to the configured API key, including ones not managed by Terraform.
 ---
 
 # parasail_dedicated_deployments (Data Source)
 
-Lists existing Parasail dedicated model deployments visible to the configured API key.
+Lists every Parasail dedicated deployment visible to the configured API key, including ones not managed by Terraform.
 
 ## Example Usage
 
 ```terraform
 data "parasail_dedicated_deployments" "all" {}
 
-output "deployment_names" {
-  value = [for d in data.parasail_dedicated_deployments.all.deployments : d.name]
+# Deployment IDs by name, for example to find the ID to import.
+output "deployment_ids" {
+  value = { for d in data.parasail_dedicated_deployments.all.deployments : d.name => d.id }
+}
+
+output "online_endpoints" {
+  value = {
+    for d in data.parasail_dedicated_deployments.all.deployments :
+    d.name => { base_url = d.base_url, model = d.model_alias }
+    if d.status == "ONLINE"
+  }
 }
 ```
 
@@ -25,40 +34,40 @@ output "deployment_names" {
 
 ### Read-Only
 
-- `deployments` (Attributes List) Existing dedicated deployments. (see [below for nested schema](#nestedatt--deployments))
+- `deployments` (Attributes List) Dedicated deployments in the account. (see [below for nested schema](#nestedatt--deployments))
 
 <a id="nestedatt--deployments"></a>
 ### Nested Schema for `deployments`
 
 Read-Only:
 
-- `autoscaling` (Boolean)
-- `base_url` (String)
-- `created_at` (Number)
-- `deployment_available_at` (Number)
-- `display_name` (String)
-- `engine` (String)
-- `gpu` (Attributes List) GPU profiles associated with the deployment. (see [below for nested schema](#nestedatt--deployments--gpu))
-- `id` (String)
-- `max_replicas` (Number)
-- `min_replicas` (Number)
-- `mode` (String)
-- `model` (String)
-- `model_alias` (String)
-- `modified_at` (Number)
-- `name` (String)
-- `replicas` (Number)
-- `started_at` (Number)
-- `status` (String)
-- `status_message` (String)
+- `autoscaling` (Boolean) Whether autoscaling is enabled.
+- `base_url` (String) OpenAI-compatible base URL for inference requests.
+- `created_at` (Number) Unix epoch milliseconds when the deployment was created.
+- `deployment_available_at` (Number) Unix epoch milliseconds when the deployment first became available.
+- `display_name` (String) Account-qualified display name.
+- `engine` (String) Inference engine, such as `VLLM`.
+- `gpu` (Attributes List) GPU configurations attached to the deployment. (see [below for nested schema](#nestedatt--deployments--gpu))
+- `id` (String) Numeric Parasail deployment ID. Use it to import the deployment into `parasail_dedicated_deployment`.
+- `max_replicas` (Number) Maximum replica count when autoscaling.
+- `min_replicas` (Number) Minimum replica count when autoscaling.
+- `mode` (String) Model serving mode, such as `AUTO` or `GENERATE`.
+- `model` (String) Hugging Face model ID being served.
+- `model_alias` (String) Model identifier to send as `model` in OpenAI-compatible requests.
+- `modified_at` (Number) Unix epoch milliseconds of the last configuration change.
+- `name` (String) Deployment name.
+- `replicas` (Number) Requested replica count.
+- `started_at` (Number) Unix epoch milliseconds when the deployment last started.
+- `status` (String) Deployment status, such as `STARTING`, `ONLINE`, `PAUSED`, or `ERROR`.
+- `status_message` (String) Detail for `status`, when Parasail provides one.
 
 <a id="nestedatt--deployments--gpu"></a>
 ### Nested Schema for `deployments.gpu`
 
 Read-Only:
 
-- `available` (Boolean)
-- `count` (Number)
-- `display_name` (String)
-- `selected` (Boolean)
-- `type` (String)
+- `available` (Boolean) Whether Parasail currently has capacity for this configuration.
+- `count` (Number) Number of GPUs per replica.
+- `display_name` (String) Human-readable configuration name, such as `H100SXM x 2`.
+- `selected` (Boolean) Whether the configuration is one the deployment may run on. Matches the `gpu` blocks of `parasail_dedicated_deployment`.
+- `type` (String) GPU type, such as `RTX5090`.

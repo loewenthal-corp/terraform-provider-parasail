@@ -1,54 +1,71 @@
+# Deploys Qwen2.5-7B-Instruct on the cheapest single-GPU configuration
+# Parasail currently offers for it, with autoscaling and idle scale-down.
+
 terraform {
   required_version = ">= 1.6.0"
 
   required_providers {
     parasail = {
       source  = "registry.terraform.io/loewenthal-corp/parasail"
-      version = ">= 0.1.0"
+      version = ">= 0.2.0"
     }
   }
 }
 
 provider "parasail" {
-  # api_key may also be set with PARASAIL_API_KEY.
-  # endpoint defaults to https://api.parasail.io/api/v1.
+  # api_key defaults to the PARASAIL_API_KEY environment variable.
 }
 
-data "parasail_dedicated_model_support" "example" {
+data "parasail_dedicated_model_support" "qwen" {
   model_name = "Qwen/Qwen2.5-7B-Instruct"
   engine     = "VLLM"
+
+  lifecycle {
+    postcondition {
+      condition     = self.supported
+      error_message = "Parasail cannot deploy ${self.model_name}: ${join("; ", [for m in self.messages : m.content])}"
+    }
+  }
 }
 
-data "parasail_dedicated_device_configs" "example" {
-  model_name = data.parasail_dedicated_model_support.example.model_name
+data "parasail_dedicated_device_configs" "qwen" {
+  model_name = data.parasail_dedicated_model_support.qwen.model_name
   engine     = "VLLM"
 }
 
-resource "parasail_dedicated_deployment" "example" {
-  name  = "qwen-example"
-  model = data.parasail_dedicated_model_support.example.model_name
+locals {
+  # Single-GPU configurations, preferring ones with capacity right now.
+  single_gpu = [for c in data.parasail_dedicated_device_configs.qwen.configs : c if c.count == 1]
+  candidates = length([for c in local.single_gpu : c if c.available]) > 0 ? [for c in local.single_gpu : c if c.available] : local.single_gpu
+  cheapest   = [for c in local.candidates : c if c.cost == min([for x in local.candidates : x.cost]...)][0]
+}
 
-  engine = "VLLM"
-  mode   = "AUTO"
+resource "parasail_dedicated_deployment" "qwen" {
+  name  = "qwen-example"
+  model = data.parasail_dedicated_model_support.qwen.model_name
 
   gpu {
-    type  = data.parasail_dedicated_device_configs.example.configs[0].device
-    count = data.parasail_dedicated_device_configs.example.configs[0].count
+    type  = local.cheapest.device
+    count = local.cheapest.count
   }
 
   autoscaling {
     min_replicas                   = 1
-    max_replicas                   = 5
+    max_replicas                   = 3
     target_connections_per_replica = 16
   }
 
-  scale_down_after = "8h"
+  scale_down_after = "1h"
+}
+
+output "gpu" {
+  value = local.cheapest.display_name
+}
+
+output "base_url" {
+  value = parasail_dedicated_deployment.qwen.base_url
 }
 
 output "model_alias" {
-  value = parasail_dedicated_deployment.example.model_alias
-}
-
-output "status" {
-  value = parasail_dedicated_deployment.example.status
+  value = parasail_dedicated_deployment.qwen.model_alias
 }
